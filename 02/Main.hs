@@ -32,9 +32,18 @@ runToCompletion init =
   let initState = (Running init 0)
   in run initState
 
+findOneTwoOutputEquals :: Int -> [Int] -> (Int, Int)
+findOneTwoOutputEquals output templateMemory =
+  fst (head (filter eqOutput [ (pair, f) | (pair, (Finished (f:_))) <- (zip allOneTwoPairs (map runToCompletion (map buildInit allOneTwoPairs)))]))
+  where allOneTwoPairs = [ (a,b) | a <- [0..99], b <- [0..99]]
+        pre = head templateMemory
+        suf = tail templateMemory
+        buildInit (a,b) = pre:a:b:suf
+        eqOutput (_,c) = c == output
+
 vmMain :: String -> String
 vmMain input =
-  show (runToCompletion init)
+  show (findOneTwoOutputEquals 19690720 init)
     where init = map (read :: String -> Int) (splitOn "," input)
 
 -- interact framework below
