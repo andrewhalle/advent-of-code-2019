@@ -43,9 +43,18 @@ getClosestIntersectionDistance wire1 wire2 =
   minimum (filter (>0) (map manhattanDistance intersections))
   where intersections = getIntersectionPoints wire1 wire2
 
+getMinimumIntersectionTiming :: [Length] -> [Length] -> Int
+getMinimumIntersectionTiming wire1 wire2 =
+  minimum (filter (>0) (map calcTiming intersections))
+  where intersections = getIntersectionPoints wire1 wire2
+        points1 = reverse (getPointsForWire wire1)
+        points2 = reverse (getPointsForWire wire2)
+        calcTiming p = (calcTiming' p points1) + (calcTiming' p points2)
+        calcTiming' p pts = minimum (elemIndices p pts)
+
 wrapper :: String -> String
 wrapper input =
-  show (getClosestIntersectionDistance wire1 wire2)
+  show (getMinimumIntersectionTiming wire1 wire2)
   where wire1 = map lengthFromString (splitOn "," l1)
         wire2 = map lengthFromString (splitOn "," l2)
         l1:l2:_ = lines input
