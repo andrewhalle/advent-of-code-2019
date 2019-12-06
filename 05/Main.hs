@@ -14,6 +14,10 @@ data Instruction = Add Int Int Int
             | Mult Int Int Int
             | Input Int
             | Output Int
+            | JmpIfTrue Int Int
+            | JmpIfFalse Int Int
+            | LessThan Int Int Int
+            | Equals Int Int Int
             | Halt
             deriving (Show)
 
@@ -44,7 +48,16 @@ nextInstruction mem instrPtr =
           in Input i1
     4  -> let (_:i1:_) = take 2 (drop instrPtr mem)
           in Output i1
+    5  -> let (_:i1:i2:_) = take 3 (drop instrPtr mem)
+          in JmpIfTrue (p p1mode i1) (p p2mode i2)
+    6  -> let (_:i1:i2:_) = take 3 (drop instrPtr mem)
+          in JmpIfFalse (p p1mode i1) (p p2mode i2)
+    7  -> let (_:i1:i2:i3:_) = take 4 (drop instrPtr mem)
+          in LessThan (p p1mode i1) (p p2mode i2) i3
+    8  -> let (_:i1:i2:i3:_) = take 4 (drop instrPtr mem)
+          in Equals (p p1mode i1) (p p2mode i2) i3
     99 -> Halt
+    n  -> error ("invalid opcode" ++ (show mem) ++ (show instrPtr))
   where p mode i = case mode of
                      Position -> mem !! i
                      Immediate -> i
@@ -69,6 +82,18 @@ apply instr (Running mem instrPtr) input =
                     Nothing -> error "no input"
                     Just n  -> ((Running (replaceNth mem addr n) (instrPtr + 2)), Nothing)
     Output addr -> ((Running mem (instrPtr + 2)), Just (mem !! addr))
+    JmpIfTrue cond addr -> if cond /= 0
+                           then ((Running mem addr), Nothing)
+                           else ((Running mem (instrPtr+3)), Nothing)
+    JmpIfFalse cond addr -> if cond == 0
+                            then ((Running mem addr), Nothing)
+                            else ((Running mem (instrPtr+3)), Nothing)
+    LessThan x1 x2 addr ->  if x1 < x2
+                            then ((Running (replaceNth mem addr 1) (instrPtr + 4)), Nothing)
+                            else ((Running (replaceNth mem addr 0) (instrPtr + 4)), Nothing)
+    Equals x1 x2 addr ->  if x1 == x2
+                            then ((Running (replaceNth mem addr 1) (instrPtr + 4)), Nothing)
+                            else ((Running (replaceNth mem addr 0) (instrPtr + 4)), Nothing)
     Halt -> ((Finished mem), Nothing)
 
 ioNext :: VmState -> IO (VmState, Maybe Int)
