@@ -1,7 +1,7 @@
 import System.Environment (getArgs)
 import Data.List.Split
 import qualified Data.HashMap.Strict as H
-import qualified Data.Set as Set
+import qualified Data.Set as S
 
 -- utils
 
@@ -11,56 +11,55 @@ twoListToTup _ = error "list must be of length 2"
 
 -- end utils
 
--- Node has a possible next node, and stores the number of
--- nodes that orbit it
-data Node = Node (Maybe String) Int
+-- Node has a list of neighbor nodeIds
+data Node = Node [String]
+            deriving (Show)
+
+data BfsState = Running [(String, Int)] (S.Set String)
+              | Finished Int
+              deriving (Show)
 
 -- split pair-string on ')'
 parsePair :: String -> [String]
 parsePair p = splitOn ")" p
 
-nodeNames :: [String] -> [String]
-nodeNames pairs = (Set.toList . Set.fromList . concat . (map parsePair)) pairs
-
--- increment counter of node and all its parents by one
-incrementCounters :: H.HashMap String Node -> String -> Int -> H.HashMap String Node
-incrementCounters map nodeId amount =
-  let (Node parent countOrbitting) = H.lookupDefault (Node Nothing 0) nodeId map
-      newNode = (Node parent (countOrbitting+(amount+1)))
-  in case parent of
-       Just parentId -> incrementCounters (H.insert nodeId newNode map) parentId amount
-       Nothing       -> H.insert nodeId newNode map
-
 -- inserts the given edge to the map
 insertEdge :: H.HashMap String Node -> (String, String) -> H.HashMap String Node
-insertEdge map (orbitee,orbiter) =
-  let to                                = H.lookupDefault (Node Nothing 0) orbitee map
-      from@(Node parent countOrbitting) = H.lookupDefault (Node Nothing 0) orbiter map
-      newNode = case parent of
-                  Nothing -> Node (Just orbitee) countOrbitting
-                  Just _  -> error "node can't have 2 parents"
-  in incrementCounters (H.insert orbiter newNode map) orbitee countOrbitting
+insertEdge graph (orbitee,orbiter) =
+  let (Node n1Neighbors)  = H.lookupDefault (Node []) orbitee graph
+      (Node n2Neighbors)  = H.lookupDefault (Node []) orbiter graph
+      n1New               = (Node (orbiter:n1Neighbors))
+      n2New               = (Node (orbitee:n2Neighbors))
+  in H.insert orbitee n1New (H.insert orbiter n2New graph)
 
--- given a list of edges, parses a DAG and returns the head node
--- works because we know the name of the head node ahead of time (COM)
-parseDAG :: [String] -> ([String], H.HashMap String Node)
-parseDAG strPairs =
-  let nodes = nodeNames strPairs
-      pairs = (((map twoListToTup) . (map parsePair)) strPairs) :: [(String,String)]
+-- given list of edges, return hashmap representing graph
+parseGraph :: [String] -> H.HashMap String Node
+parseGraph strPairs =
+  let pairs = (((map twoListToTup) . (map parsePair)) strPairs) :: [(String,String)]
       initMap = H.empty
-  in (nodes, (foldl insertEdge initMap pairs))
+  in foldl insertEdge initMap pairs
 
-sumAllCounts :: [String] -> H.HashMap String Node -> Int
-sumAllCounts nodes hmap =
-  sum (map getCount nodes)
-  where getNode node = (H.lookupDefault (Node Nothing 0) node hmap)
-        getCount node = let (Node _ count) = getNode node
-                        in count
+-- find shortest path between nodes using BFS
+shortestPathLength :: H.HashMap String Node -> String -> String -> Int
+shortestPathLength graph startId endId =
+  let initState = (Running [(startId, 0)] S.empty)
+  in bfs initState
+  where bfs state = case state of
+                      Finished n            -> n
+                      Running queue visited -> bfs (nextState queue visited)
+        nextState (x:xs) visited = if (fst x) == endId
+                                   then Finished (snd x)
+                                   else if (S.member (fst x) visited)
+                                        then Running xs visited
+                                        else Running (xs ++ (neighbors (fst x) ((snd x) + 1))) (S.insert (fst x) visited)
+        nextState _ _ = error "weird argument to next state"
+        neighbors nodeId dist = let (Node ns) = (H.lookupDefault (Node []) nodeId graph)
+                                in map (\id -> (id, dist)) ns
 
 _main :: String -> String
 _main input =
-  let (nodes, map) = (parseDAG . lines) input
-  in show (sumAllCounts nodes map)
+  let graph = (parseGraph . lines) input
+  in show ((shortestPathLength graph "YOU" "SAN") - 2)
 
 -- interact framework below
 
