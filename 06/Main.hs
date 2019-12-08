@@ -52,7 +52,6 @@ shortestPathLength graph startId endId =
                                    else if (S.member (fst x) visited)
                                         then Running xs visited
                                         else Running (xs ++ (neighbors (fst x) ((snd x) + 1))) (S.insert (fst x) visited)
-        nextState _ _ = error "weird argument to next state"
         neighbors nodeId dist = let (Node ns) = (H.lookupDefault (Node []) nodeId graph)
                                 in map (\id -> (id, dist)) ns
 
