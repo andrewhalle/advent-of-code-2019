@@ -1,20 +1,43 @@
 module Main where
 
-import Computer (runVmWithInput)
+import Computer
 import System.Environment
 import Data.List
 
-applyAllAmplifiers :: String -> [Int] -> Int
-applyAllAmplifiers prog (p1:p2:p3:p4:p5:[]) =
-  let (o1:[]) = runVmWithInput prog [p1, 0]
-      (o2:[]) = runVmWithInput prog [p2, o1]
-      (o3:[]) = runVmWithInput prog [p3, o2]
-      (o4:[]) = runVmWithInput prog [p4, o3]
-      (o5:[]) = runVmWithInput prog [p5, o4]
-  in o5
-  
+replaceVm :: [VmState] -> Int -> VmState -> [VmState]
+replaceVm vms idx new =
+   let (pre,_:suf) = splitAt idx vms
+   in pre ++ (new:suf)
+
+-- takes a list of vm states, input to pass, and the index of the vm to pass
+-- it to
+complete :: ([VmState], [Int], Int) -> Int
+complete (vms, input, curr) =
+  let currentState        = vms !! curr
+      (nextState, output) = vmRunUntilMoreInputRequired currentState input
+  in if (curr == ((length vms) - 1)) && (isFinished nextState)
+     then head output
+     else complete ((replaceVm vms curr nextState), output, nextVm)
+  where isFinished curr =
+          case curr of
+            Finished _ -> True
+            _          -> False
+        nextVm = (curr + 1) `mod` (length vms)
+
+largestPossibleOutput :: String -> Int
+largestPossibleOutput prog =
+  let phases = permutations [5..9]
+  in maximum (map getOutput phases)
+  where initState = vmInitState prog
+        constructInitial p' = let (state, []) = vmRunUntilMoreInputRequired initState [p']
+                              in state
+        getOutput p =
+          let init = (map constructInitial p, [0], 0)
+          in complete init
+
+
 main :: IO ()
 main = do
   [progFilename] <- getArgs
   prog <- readFile progFilename
-  print $ runVmWithInput prog [5,0]
+  print $ largestPossibleOutput prog

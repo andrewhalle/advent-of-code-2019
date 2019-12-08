@@ -119,8 +119,7 @@ vmLoop curr input =
 -- in either case, return the current VM state, and any output produced
 -- until stopping condition
 vmRunUntilMoreInputRequired :: VmState -> [Int] -> (VmState, [Int])
-vmRunUntilMoreInputRequired :: VmState -> [Int] -> (VmState, [Int])
-vmLoop curr input =
+vmRunUntilMoreInputRequired curr input =
   case curr of
     Error _              -> (curr, [])
     Finished _           -> (curr, [])
@@ -141,6 +140,7 @@ runVmWithInput prog input =
   let initMem = map (read :: String -> Int) (splitOn "," prog)
   in vmLoop (Running initMem 0) input
 
-vmInitState :: String -> VmState =
+vmInitState :: String -> VmState
+vmInitState prog =
   let initMem = map (read :: String -> Int) (splitOn "," prog)
   in (Running initMem 0)
