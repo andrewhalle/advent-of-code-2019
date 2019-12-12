@@ -2,6 +2,7 @@ module Main where
 
 import Computer
 import System.Environment
+import Data.List
 
 data Color = Black
            | White
@@ -51,7 +52,7 @@ data Robot = Robot { computer :: VmState, pos :: (Int,Int), facing :: RobotDirec
              deriving (Show)
 
 newRobot :: String -> Robot
-newRobot program = Robot { computer = vmInitState program 2048, pos = (0,0), facing = RobotUp, hull = [] }
+newRobot program = Robot { computer = vmInitState program 2048, pos = (0,0), facing = RobotUp, hull = [(HullSquare { hpos=(0,0), color=White })] }
 
 robotGetCurrentColor :: Robot -> Color
 robotGetCurrentColor (Robot { pos=pos, hull=hull }) = case (filter (hullSquareAt pos) hull) of
@@ -87,9 +88,36 @@ robotRunUntilFinished start =
        Running _ _ _ -> robotRunUntilFinished next
        _             -> next
 
+robotGetHullAsString :: Robot -> String
+robotGetHullAsString (Robot { hull=hull }) =
+  let (HullSquare { hpos=(x1,_) }) = minimumBy (\x y -> compare (getX x) (getX y)) hull
+      (HullSquare { hpos=(x2,_) }) = maximumBy (\x y -> compare (getX x) (getX y)) hull
+      (HullSquare { hpos=(_,y1) }) = minimumBy (\x y -> compare (getY x) (getY y)) hull
+      (HullSquare { hpos=(_,y2) }) = maximumBy (\x y -> compare (getY x) (getY y)) hull
+      width = x2 - x1
+      height = y2 - y1
+      s1 = take ((width+4) * (height+4)) (foldr (buildString x1 y2 width height hull) "" [0..])
+      s2 = lined width s1
+  in s2
+  where buildString l t w h hs idx curr =
+          let p = ((l-1) + (idx `mod` w), (t+1) - (idx `div` w))
+              sq = filter (hullSquareAt p) hs
+              c = case sq of
+                  [s] -> color s
+                  _   -> Black
+          in case c of
+               Black -> ((toEnum 9608):curr)
+               White -> (' ':curr)
+        getX = fst . hpos
+        getY = snd . hpos
+        lined w s = if (length s) <= w then s else (take w s) ++ ('\n':(lined w (drop w s)))
+
+
 main :: IO ()
 main = do
   [progFile] <- getArgs
   prog <- readFile progFile
-  let (Robot { hull=hull }) = robotRunUntilFinished (newRobot prog)
-  print $ length hull
+  let r = robotRunUntilFinished (newRobot prog)
+      s1 = robotGetHullAsString r
+  putStrLn s1
+  print $ (length . hull) r
