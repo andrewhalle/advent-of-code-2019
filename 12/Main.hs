@@ -3,6 +3,7 @@ module Main where
 
 import Data.Char
 import Data.List
+import qualified Data.Set as S
 import Data.List.Split
 
 data Point = Point { x :: Int, y :: Int, z :: Int }
@@ -63,6 +64,39 @@ updatePosition ms = map updatePositionSingle ms
 step :: [Moon] -> [Moon]
 step = (updatePosition . applyGravity)
 
+findXPeriod :: [Moon] -> Int -> S.Set [Int] -> Int
+findXPeriod ms idx seen =
+  let next = step ms
+      xstate = buildXState next
+  in if (S.member xstate seen)
+     then idx
+     else findXPeriod next (idx+1) (S.insert xstate seen)
+  where buildXState ms' = case ms' of
+                            []       -> []
+                            ((Moon (Point { x=x }) (Velocity { x=vx })):ms'') -> x:vx:(buildXState ms'')
+
+findYPeriod :: [Moon] -> Int -> S.Set [Int] -> Int
+findYPeriod ms idx seen =
+  let next = step ms
+      ystate = buildYState next
+  in if (S.member ystate seen)
+     then idx
+     else findYPeriod next (idx+1) (S.insert ystate seen)
+  where buildYState ms' = case ms' of
+                            []       -> []
+                            ((Moon (Point { y=y }) (Velocity { y=vy })):ms'') -> y:vy:(buildYState ms'')
+
+findZPeriod :: [Moon] -> Int -> S.Set [Int] -> Int
+findZPeriod ms idx seen =
+  let next = step ms
+      zstate = buildZState next
+  in if (S.member zstate seen)
+     then idx
+     else findZPeriod next (idx+1) (S.insert zstate seen)
+  where buildZState ms' = case ms' of
+                            []       -> []
+                            ((Moon (Point { z=z }) (Velocity { z=vz })):ms'') -> z:vz:(buildZState ms'')
+
 
 parseInitial :: String -> [Moon]
 parseInitial raw =
@@ -77,5 +111,7 @@ main :: IO ()
 main = do
   init <- readFile "input.txt"
   let moons = parseInitial init
-  let final = foldr (\_ y -> step y) moons [1..5977]
-  print $ sum (map totalEnergy final)
+      xperiod = findXPeriod moons 0 S.empty
+      yperiod = findYPeriod moons 0 S.empty
+      zperiod = findZPeriod moons 0 S.empty
+  print $ lcm zperiod (lcm xperiod yperiod)
