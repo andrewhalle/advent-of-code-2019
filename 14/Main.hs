@@ -1,5 +1,6 @@
 module Main where
 
+import System.Environment
 import qualified Data.Set as S
 import Data.List.Split
 
@@ -7,6 +8,14 @@ import Data.List.Split
 -- disposal, and we've used a certain amount of ore to get here
 data State = State { materials :: [(String, Int)], oreUsed :: Int }
              deriving (Show)
+
+-- goal is to create one fuel
+hasOneFuel :: State -> Bool
+hasOneFuel (State { materials=materials }) =
+  let fuel = lookup "FUEL" materials
+  in case fuel of
+       Just n  -> n == 1
+       Nothing -> False
 
 -- helper function for updating the count of one chemical
 updateMaterials :: [(String, Int)] -> String -> Int -> [(String, Int)]
@@ -76,5 +85,42 @@ parseRecipe raw =
   where parsePair s = let [amtStr, chem] = splitOn " " s
                       in (chem, read amtStr) :: (String, Int)
 
+data IDDFSResult = Found State
+                 | NotFound
+                 deriving (Show)
+
+isNotFound :: IDDFSResult -> Bool
+isNotFound (Found _) = False
+isNotFound NotFound = True
+
+-- search the graph of states by iterative deepening
+iddfs :: Int -> (State -> [State]) -> (State -> Bool) -> State -> IDDFSResult
+iddfs maxLimit neighborFunc goalTest start =
+  let results = map (\x -> iddfsHelper x neighborFunc goalTest start) [0..maxLimit]
+      results' = dropWhile isNotFound results
+  in case results' of
+       [] -> NotFound
+       _ -> head results'
+
+-- helper for iddfs, implements one round of searching
+iddfsHelper :: Int -> (State -> [State]) -> (State -> Bool) -> State -> IDDFSResult
+iddfsHelper 0 _ goalTest curr = if (goalTest curr) then Found curr else NotFound
+iddfsHelper currLimit neighborFunc goalTest curr =
+  foldr (\x y -> case y of
+                   Found s -> Found s
+                   NotFound -> if (goalTest curr)
+                               then Found curr
+                               else let results = map (iddfsHelper (currLimit-1) neighborFunc goalTest) (neighborFunc curr)
+                                    in foldr (\x y -> case y of
+                                                        Found _ -> y
+                                                        NotFound -> x
+                                             ) NotFound results
+        ) NotFound (neighborFunc curr)
+
 main :: IO ()
-main = putStrLn "Hello, Haskell!"
+main = do
+  [recipeFile] <- getArgs
+  raw <- readFile recipeFile
+  let recipes = parseRecipes raw
+      neighborFunc = neighbors recipes
+  print $ iddfs 100 neighborFunc hasOneFuel initialState
