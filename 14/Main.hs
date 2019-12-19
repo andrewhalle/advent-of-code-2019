@@ -1,6 +1,7 @@
 module Main where
 
 import qualified Data.Set as S
+import Data.List.Split
 
 -- current state. we always have an unlimited amount of ore at our
 -- disposal, and we've used a certain amount of ore to get here
@@ -54,7 +55,26 @@ applyRecipe
        in State { materials=newMaterials, oreUsed=newOreUsed }
        where f (c, a) curr = updateMaterials curr c a
 
+-- all neighbors of a state according to the list
+-- of recipes available
+neighbors :: [Recipe] -> State -> [State]
+neighbors rs s =
+  let available = filter (canApplyRecipe s) rs
+  in map (applyRecipe s) available
 
+-- parse input string into a list of available recipes
+parseRecipes :: String -> [Recipe]
+parseRecipes raw = ((map parseRecipe) . lines) raw
+
+-- parse single line of input into a recipe
+parseRecipe :: String -> Recipe
+parseRecipe raw =
+  let [ins, out] = splitOn " => " raw
+      inPairs = map parsePair (splitOn ", " ins)
+      outPair = parsePair out
+  in Recipe { inputs=inPairs, output=outPair }
+  where parsePair s = let [amtStr, chem] = splitOn " " s
+                      in (chem, read amtStr) :: (String, Int)
 
 main :: IO ()
 main = putStrLn "Hello, Haskell!"
