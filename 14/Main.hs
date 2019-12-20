@@ -1,126 +1,79 @@
 module Main where
 
-import System.Environment
-import qualified Data.Set as S
+import qualified Data.HashMap as H
+import Data.List
 import Data.List.Split
 
--- current state. we always have an unlimited amount of ore at our
--- disposal, and we've used a certain amount of ore to get here
-data State = State { materials :: [(String, Int)], oreUsed :: Int }
-             deriving (Show)
+testRules :: H.Map String (Int, [(String, Int)])
+testRules =
+  let h1 = H.empty
+      h2 = H.insert "A" (10, [("ORE", 10)]) h1
+      h3 = H.insert "B" (1, [("ORE", 1)]) h2
+      h4 = H.insert "C" (1, [("A", 7), ("B", 1)]) h3
+      h5 = H.insert "D" (1, [("A", 7), ("C", 1)]) h4
+      h6 = H.insert "E" (1, [("A", 7), ("D", 1)]) h5
+      h7 = H.insert "FUEL" (1, [("A", 7), ("E", 1)]) h6
+  in h7
 
--- goal is to create one fuel
-hasOneFuel :: State -> Bool
-hasOneFuel (State { materials=materials }) =
-  let fuel = lookup "FUEL" materials
-  in case fuel of
-       Just n  -> n == 1
-       Nothing -> False
+-- invert an amount of a chemical into its component parts
+invert :: H.Map String (Int, [(String, Int)]) -> (String, Int) -> [(String, Int)]
+invert rules orig@("ORE", amt) = [orig]
+invert rules (result, amt) =
+  let Just rule = H.lookup result rules
+      amtProduced = fst rule
+      components = snd rule
+      productionFactor = if amtProduced >= amt then 1 else ceiling ((fromIntegral amt) / (fromIntegral amtProduced))
+  in scaleReactants productionFactor components
 
--- helper function for updating the count of one chemical
-updateMaterials :: [(String, Int)] -> String -> Int -> [(String, Int)]
-updateMaterials curr chem delta =
-  let toUpdate    = lookup chem curr
-      currAmount  = case toUpdate of
-                      Just n  -> n
-                      Nothing -> 0
-      new         = if (currAmount + delta) < 0
-                    then error "not enough materials"
-                    else (chem, currAmount + delta)
-      rest        = filter (\x -> (fst x) /= chem) curr
-  in (new:rest)
+scaleReactants :: Int -> [(String, Int)] -> [(String, Int)]
+scaleReactants n rs = map (\x -> (fst x, (snd x) * n)) rs
 
--- the starting state for the search
-initialState = State { materials=[], oreUsed=0 }
+combineLikeReactants :: [(String, Int)] -> [(String, Int)]
+combineLikeReactants initial = H.toList (foldr (\x y -> addToMap y x) H.empty initial)
+  where addToMap m (name, val) =
+          let currVal = H.findWithDefault 0 name m
+          in H.insert name (currVal + val) m
 
--- how to produce a new chemical given some existing ones
-data Recipe = Recipe { inputs :: [(String, Int)], output :: (String, Int) }
-              deriving (Show)
+-- take a list and keep inverting until only ORE is left
+-- we have to invert in reverse topologically sorted order
+invertToOre :: [String] -> H.Map String (Int, [(String, Int)]) -> [(String, Int)] -> [(String, Int)]
+invertToOre ordering rules curr =
+  let inverter = invert rules
+      nameToInvert = head ordering
+      ([toInvert], rest) = partition (\x -> (fst x) == nameToInvert) curr
+      inverted = inverter toInvert
+      reduced = combineLikeReactants (inverted ++ rest)
+  in case ordering of
+       [x]    -> reduced
+       (x:xs) -> invertToOre xs rules reduced
 
--- do we have enough materials to apply this recipe?
-canApplyRecipe :: State -> Recipe -> Bool
-canApplyRecipe (State { materials=materials }) (Recipe { inputs=inputs }) =
-  and (map haveEnough inputs)
-  where haveEnough (chem, req) =
-          if chem == "ORE" then True
-          else let have = lookup chem materials
-          in case have of
-            Just n  -> n >= req
-            Nothing -> False
+-- need to top-sort rules for invertToOre
+topSort :: H.Map String (Int, [(String, Int)]) -> [String]
+topSort graph = ("FUEL"):(topSortHelper graph "FUEL" [])
 
--- apply recipe returning a new state
-applyRecipe :: State -> Recipe -> State
-applyRecipe
-  s@(State { materials=materials, oreUsed=oreUsed })
-  r@(Recipe { inputs=inputs, output=output })
-  =
-  if not (canApplyRecipe s r) then error "can't apply that recipe"
-  else let oreReq = lookup "ORE" inputs
-           newOreUsed = case oreReq of
-                          Just n  -> oreUsed+n
-                          Nothing -> oreUsed
-           toUpdate = output:(map (\x -> (fst x, -(snd x))) (filter (\x -> (fst x) /= "ORE") inputs))
-           newMaterials = filter (\x -> (snd x) /= 0) (foldr f materials toUpdate)
-       in State { materials=newMaterials, oreUsed=newOreUsed }
-       where f (c, a) curr = updateMaterials curr c a
+topSortHelper :: H.Map String (Int, [(String, Int)]) -> String -> [String] -> [String]
+topSortHelper graph curr startStack =
+  let Just (_, ns) = H.lookup curr graph
+      neighbors = filter (/= "ORE") (map fst ns)
+      newStack = foldr (\n s -> if (n `elem` s) then s else n:(topSortHelper graph n s)) startStack neighbors
+  in newStack
 
--- all neighbors of a state according to the list
--- of recipes available
-neighbors :: [Recipe] -> State -> [State]
-neighbors rs s =
-  let available = filter (canApplyRecipe s) rs
-  in map (applyRecipe s) available
-
--- parse input string into a list of available recipes
-parseRecipes :: String -> [Recipe]
-parseRecipes raw = ((map parseRecipe) . lines) raw
-
--- parse single line of input into a recipe
-parseRecipe :: String -> Recipe
-parseRecipe raw =
-  let [ins, out] = splitOn " => " raw
-      inPairs = map parsePair (splitOn ", " ins)
-      outPair = parsePair out
-  in Recipe { inputs=inPairs, output=outPair }
-  where parsePair s = let [amtStr, chem] = splitOn " " s
-                      in (chem, read amtStr) :: (String, Int)
-
-data IDDFSResult = Found State
-                 | NotFound
-                 deriving (Show)
-
-isNotFound :: IDDFSResult -> Bool
-isNotFound (Found _) = False
-isNotFound NotFound = True
-
--- search the graph of states by iterative deepening
-iddfs :: Int -> (State -> [State]) -> (State -> Bool) -> State -> IDDFSResult
-iddfs maxLimit neighborFunc goalTest start =
-  let results = map (\x -> iddfsHelper x neighborFunc goalTest start) [0..maxLimit]
-      results' = dropWhile isNotFound results
-  in case results' of
-       [] -> NotFound
-       _ -> head results'
-
--- helper for iddfs, implements one round of searching
-iddfsHelper :: Int -> (State -> [State]) -> (State -> Bool) -> State -> IDDFSResult
-iddfsHelper 0 _ goalTest curr = if (goalTest curr) then Found curr else NotFound
-iddfsHelper currLimit neighborFunc goalTest curr =
-  foldr (\x y -> case y of
-                   Found s -> Found s
-                   NotFound -> if (goalTest curr)
-                               then Found curr
-                               else let results = map (iddfsHelper (currLimit-1) neighborFunc goalTest) (neighborFunc curr)
-                                    in foldr (\x y -> case y of
-                                                        Found _ -> y
-                                                        NotFound -> x
-                                             ) NotFound results
-        ) NotFound (neighborFunc curr)
+-- now, just need to parse the rules graph from the input string
+parseRules :: String -> H.Map String (Int, [(String, Int)])
+parseRules raw =
+  let ls = lines raw
+  in foldr parseRule H.empty ls
+  where parseRule s h =
+          let [ins1, outs1] = splitOn " => " s
+              [outAmt, outName] = splitOn " " outs1
+              ins = map (\x -> let [inAmt, inName] = splitOn " " x
+                               in (inName, read inAmt)
+                        ) (splitOn ", " ins1)
+              val = (read outAmt, ins)
+          in H.insert outName val h
 
 main :: IO ()
 main = do
-  [recipeFile] <- getArgs
-  raw <- readFile recipeFile
-  let recipes = parseRecipes raw
-      neighborFunc = neighbors recipes
-  print $ iddfs 100 neighborFunc hasOneFuel initialState
+  raw <- readFile "puzzle.txt"
+  let rules = parseRules raw
+  print $ invertToOre (topSort rules) rules [("FUEL", 998536)]
