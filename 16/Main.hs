@@ -1,25 +1,12 @@
 module Main where
 
--- generates an infinite list with the pattern according to
--- the position of the digit we're calculating
-pattern :: Int -> [Int]
-pattern idx =
-  let n = idx + 1
-      pat = (take n (repeat 0)) ++ (take n (repeat 1)) ++ (take n (repeat 0)) ++ (take n (repeat (-1)))
-      rep = cycle pat
-  in tail rep
+import Data.List
 
--- calculate one output digit at position
-calcDigit :: [Int] -> Int -> Int
-calcDigit input idx =
-  let pat = pattern idx
-      zipped = zip input pat
-      total = foldr (\x y -> y + ((fst x) * (snd x))) 0 zipped
-  in (abs total) `mod` 10
-
--- apply one phase of FFT
+-- apply one phase of FFT, considering the offset
 phase :: [Int] -> [Int]
-phase input = take (length input) (map (calcDigit input) [0..])
+phase input =
+  let x = foldr (\x y -> (x + (fst y), ((abs (x + (fst y))) `mod` 10):(snd y))) (0, []) input
+  in snd x
 
 -- get list of digits from input string
 getInput :: String -> [Int]
@@ -36,9 +23,26 @@ getInput s = map toDigit (filter (/='\n') s)
                       '9' -> 9
                       '0' -> 0
 
+
+toChar d = case d of
+             1 -> '1'
+             2 -> '2'
+             3 -> '3'
+             4 -> '4'
+             5 -> '5'
+             6 -> '6'
+             7 -> '7'
+             8 -> '8'
+             9 -> '9'
+             0 -> '0'
+
 main :: IO ()
 main = do
   inputStr <- readFile "puzzle.txt"
   let input = getInput inputStr
-      result = last (take 101 (iterate phase input))
+      rep = cycle input
+      offset = read (((map toChar) . (take 7)) input)
+      input' = take ((length input) * 10000) rep
+      input'' = drop offset input'
+      result = last (take 101 (iterate phase input''))
   print $ take 8 result
